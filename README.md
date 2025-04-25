@@ -111,7 +111,60 @@ Se aplicaron diversas técnicas para preparar los datos agregados y crear featur
     * **Importancia Features:** Lags y Rolling Means consistentemente importantes (XGB/RF). LGBM valora más Municipio y GrowthRate MoM. Incapacidad tiene alguna relevancia.
 * **Tendencia Futura:** La predicción descendente para 2025 es una **extrapolación de la tendencia negativa reciente** observada en los datos (ver plot GrowthRate MoM). **Requiere validación experta.**
 
-## 9. Predicción Futura e Implementación
+## 9. Implementación Matematica
+
+### Modelo de predicción
+ŷ(t) = β₀ + Σ[βᵢ·xᵢ(t)] + γ·s(t) + ε(t)
+
+Donde:
+- ŷ(t): Predicción en tiempo t
+- β₀: Término de intercepción
+- xᵢ(t): Features temporales (lags, medias móviles)
+- s(t): Componente estacional (Fourier)
+- ε(t): Término de error
+
+### Transformación Logarítmica
+
+```python
+# Transformación para normalizar distribución
+y_transformed = np.log1p(y_original)
+
+# Transformación inversa para predicciones finales
+y_pred_original = np.expm1(y_pred_transformed)
+
+# Justificación matemática:
+# log1p(x) = ln(1 + x) → Estable para x ∈ [0, ∞)
+# expm1(x) = eˣ - 1   → Inversa exacta
+```
+### Descomposición Temporal
+```python
+# Componentes cíclicos para patrones estacionales
+df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
+df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
+
+# Teoría subyacente:
+# Cualquier función periódica puede representarse como:
+# f(t) = a₀ + Σ[aₙ·cos(nωt) + bₙ·sin(nωt)]
+# donde ω = 2π/T (frecuencia angular fundamental)
+```
+
+### Arquitectura del Modelo
+```mermaid
+graph TD
+    A[Datos Históricos] --> B[Preprocesamiento]
+    B --> C[Feature Engineering]
+    C --> D[Entrenamiento Paralelo]
+    D --> E[LightGBM]
+    D --> F[XGBoost]
+    D --> G[Random Forest]
+    E --> H[Ensamble]
+    F --> H
+    G --> H
+    H --> I[Predicciones]
+    I --> J[Evaluación]
+    J --> K[Despliegue]
+```
+## 10. Predicción Futura e Implementación
 
 * **Método Iterativo:** Esencial para generar predicciones cuando hay features que dependen de lags recientes (como lag 1, rolling mean 3/6, growth rates). Se predice mes t+1, se usa para calcular features de t+2, etc.
 * **Implementación:**
