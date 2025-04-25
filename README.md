@@ -1,143 +1,140 @@
 Para poder ver la pagina con todos los resultados encontrados entrar aquí: https://salud-sura-insights-dashboard.lovable.app/
+# README: Modelo de Predicción de Demanda de Servicios de Salud SURA (v13)
 
-# 📈 Healthcare Service Demand Forecasting
+**Última Actualización:** 24 de Abril, 2025
 
-## 1. Características
-- Predicción multinivel (municipio + tipo de servicio)
-- Ensamble de 3 modelos (LGBM, XGBoost, Random Forest)
-- 50+ features temporales y contextuales
-- Sistema de monitoreo de errores integrado
-- Visualizaciones interactivas
+## 1. Resumen Ejecutivo
 
-Se requiere específicamente incluir las atenciones relacionadas con accidentes y enfermedades laborales. Los modelos deben incorporar factores como estacionalidad, tendencias históricas, características demográficas (implícitas en Municipio) e indicadores económicos locales.
+Este proyecto aborda la necesidad de anticipar la demanda de servicios de salud para SURA Colombia, con el fin de optimizar la asignación de recursos y la planificación operativa. Se desarrolló un pipeline de Machine Learning para generar pronósticos a 12 meses, detallados por Municipio y Tipo de Servicio, utilizando datos históricos agregados mensualmente.
 
-## 2. Datos Utilizados
-Se utilizaron principalmente los siguientes conjuntos de datos:
+Tras un proceso iterativo de ingeniería de características, selección de modelos, entrenamiento, evaluación y corrección de errores (incluyendo la identificación y exclusión de features con *data leakage*), se obtuvo un modelo **Ensamble** (promedio de LightGBM, XGBoost y RandomForest) como el de mejor rendimiento en el conjunto de validación (datos de 2024).
 
-1. **`muestra_salud_.csv`**: Dataset reducido del dataset orignal con aproximadamente 11 millones de registros detallados de atenciones médicas. Contiene información granular sobre fechas, pacientes, IPS, médicos, diagnósticos, tipos de atención, etc.
+El modelo final muestra una **alta precisión predictiva** (MAE ~0.62 servicios, R² ~0.994 en validación) para la **demanda agregada mensual**, superando significativamente a un baseline simple. Sin embargo, se identificaron **limitaciones clave** relacionadas con la **falta de datos para identificar servicios laborales específicos** y la **imposibilidad de incorporar datos de capacidad de la red de prestadores** debido a inconsistencias en los identificadores de municipio entre datasets.
 
-2. **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datos preprocesados y agregados mensualmente a nivel de `Municipio` y `Service_Type` (derivado de `Nombre_Tipo_Atencion_Arp`). Estos fueron los datasets principales para entrenar y validar los modelos de forecasting mensual.
+Las predicciones para 2025 muestran una **tendencia decreciente**, probablemente influenciada por patrones recientes observados en los datos históricos, que requiere validación experta.
 
-3. **`2.Red Prestadores.xlsx`**: Contiene información sobre los prestadores de servicios (IPS), incluyendo un ID de municipio (`Geogra_Municipio_Id`) y una métrica de capacidad (`max_cantidad`). 
+**Próximos pasos cruciales:** Mejorar el preprocesamiento de datos para incluir la identificación de servicios laborales y resolver el mapeo de IDs para incorporar datos de capacidad.
 
-**Nota importante**: La agregación de 11M de registros a ~500k filas mensuales implica una pérdida significativa de granularidad diaria/semanal. Los modelos resultantes predicen la demanda agregada mensual.
+## 2. Objetivo del Proyecto
 
-## 3. Preprocesamiento e Ingeniería de Características
-El preprocesamiento incluyó los siguientes pasos clave:
+**Problema:** La variabilidad en la demanda de servicios de salud dificulta la planificación eficiente de recursos (personal médico, insumos, camas, etc.). Una predicción imprecisa puede llevar a sobrecostos o a una atención deficiente.
 
-### Agregación y Target
-- Agrupación de los datos originales por `Año`, `Mes`, `Nombre_Municipio_IPS`, `Nombre_Tipo_Atencion_Arp`
-- Cálculo de `Service_Count` (conteo de siniestros/atenciones)
+**Objetivo General:** Desarrollar un sistema de modelos de Machine Learning capaces de predecir la demanda de servicios de salud con 12 meses de antelación.
 
-### Features de Incapacidad
-- Cálculo de `Mean/Median/Total_Incapacity_Days` a partir de `Dias_IT_num`
-- Imputación de NaNs con mediana por tipo de servicio y luego 0
+**Objetivos Específicos:**
 
-### Features Temporales
-- Creación de `Date` (primer día del mes)
-- Extracción de `Year`, `Month`, `Quarter`, `Month_of_Year`
-- Creación de `Year_Fraction`
-- Ciclos (Sin/Cos): `Month_sin`, `Month_cos`, `Quarter_sin`, `Quarter_cos`
+* Generar predicciones mensuales de la cantidad de servicios (`Service_Count`).
+* Desglosar las predicciones por `Municipio` y `Tipo de Servicio`.
+* Incorporar la influencia de factores como tendencias históricas, estacionalidad y características específicas de cada serie (Municipio-Servicio).
+* Específicamente intentar predecir la demanda de servicios derivados de **Accidentes de Trabajo y Enfermedades Laborales (ATEL)**. *(Nota: Este objetivo no se pudo cumplir completamente por limitaciones en los datos actuales)*.
+* Evaluar rigurosamente la precisión y robustez de los modelos.
 
-### Codificación Categórica
-- `Municipality` y `Service_Type` convertidos a `Municipality_encoded` y `Service_Type_encoded` usando `LabelEncoder`
+## 3. Datos Utilizados
 
-### Features de Lags
-- Creación de `Service_Count_lag_X` (para X = 1, 2, 3, 6, 12 meses)
-- NaNs rellenados con 0
+Se trabajó con tres fuentes de datos principales:
 
-### Features Rolling Statistics
-- Creación de `Service_Count_rolling_mean/std_X` (para X = 3, 6, 12 meses)
-- **Advertencia**: Potencial leakage al no usar `closed='left'`
+1.  **`muestra_salud_.csv`**: Dataset original (~11 millones de registros según usuario) con detalles de atenciones individuales. **Fuente Primaria.**
+2.  **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datasets derivados del anterior, **agregados mensualmente** por `Municipio` (originado de `Nombre_Municipio_IPS`) y `Service_Type` (originado de `Nombre_Tipo_Atencion_Arp`). Contienen ~14,000 filas en total y fueron la **base para el modelado**.
+    * **Target:** `Service_Count` (conteo de atenciones/siniestros por grupo/mes).
+    * **Impacto de Agregación:** Esta agregación mensual es **necesaria para el objetivo de forecasting mensual**, pero **pierde la granularidad diaria/semanal** y suaviza la variabilidad. Los modelos predicen la **tendencia agregada mensual**, no eventos diarios.
+3.  **`2.Red Prestadores.xlsx - Sheet1.csv`**: Información de IPS, incluyendo `Geogra_Municipio_Id` y `max_cantidad` (potencial indicador de capacidad).
+    * **Resultado:** No se pudo incorporar `max_cantidad` porque **`Geogra_Municipio_Id` (ej. 10, 1018) no coincide directamente con `Municipality_encoded` (ej. 0, 1, 2)** usado en los datos agregados. Se requiere un mapeo explícito.
 
-### Features de Crecimiento
-- `Growth_Rate_MoM` y `Growth_Rate_YoY` calculadas con `.pct_change()`
-- NaNs/Infs rellenados con 0
+## 4. Preprocesamiento e Ingeniería de Características (Sobre Datos Agregados)
 
-### Features de Historial
-- `Days_Since_First_Service` (calculado desde la fecha mínima por grupo)
-- `Month_Sequence` (contador de meses por grupo)
+Se aplicaron diversas técnicas para preparar los datos agregados y crear features relevantes para los modelos de series de tiempo:
 
-## 4. Transformación del Target (Log1p)
-Para manejar la asimetría en `Service_Count`, se aplicó una transformación logarítmica:
+* **Target (`Service_Count`):** Número de servicios por Municipio/TipoServicio/Mes.
+* **Features Temporales:**
+    * `Date`: Primer día del mes (convertido a datetime).
+    * `Year`, `Month`, `Quarter`, `Month_of_Year`: Extraídos de `Date`.
+    * `Year_Fraction`: Para capturar tendencia anual fraccionada.
+    * **Ciclos (Sin/Cos):** `Month_sin/cos`, `Quarter_sin/cos`. **Rationale:** Ayudan a los modelos (especialmente los basados en árboles) a entender la naturaleza cíclica de la estacionalidad mensual y trimestral de forma continua.
+* **Encoding Categórico:** `Municipality_encoded`, `Service_Type_encoded`. **Rationale:** Convertir identificadores de texto a números para que los modelos puedan procesarlos. Se usó `LabelEncoder`. Se crearon diccionarios (`decoders.joblib`) para mapear de vuelta a nombres originales.
+* **Features de Lags:** `Service_Count_lag_X` (X=1, 2, 3, 6, 12). **Rationale:** La demanda pasada es un predictor muy fuerte de la demanda futura (autocorrelación). Se incluyeron lags de corto y mediano plazo, y el lag anual (12). NaNs iniciales rellenados con 0.
+* **Features Rolling Statistics:** `Service_Count_rolling_mean/std_X` (X=6, 12 - se quitaron las de ventana 3 para reducir posible sobreajuste a ruido). **Rationale:** Capturan la tendencia local (media móvil) y la volatilidad reciente (desviación estándar móvil).
+    * **¡Advertencia Leakage Potencial!**: El código de preproc. original calcula rolling stats incluyendo el mes actual. **Rationale (Corrección Sugerida):** Se debe usar `.shift(1).rolling(...)` o `rolling(..., closed='left')` para asegurar que solo se usa información pasada, evitando inflar artificialmente el rendimiento.
+* **Features de Crecimiento:** `Growth_Rate_MoM`, `Growth_Rate_YoY`. **Rationale:** Capturan cambios relativos mes a mes y año a año, útiles para detectar aceleraciones o desaceleraciones. Se calculan con `.pct_change()`.
+* **Features de Historial:** `Days_Since_First_Service`, `Month_Sequence`. **Rationale:** Capturan la "edad" o madurez de cada serie individual (combinación Municipio-Servicio).
+* **Features de Incapacidad:** `Mean/Median/Total_Incapacity_Days`. **Rationale:** La duración de las incapacidades podría estar correlacionada con la demanda futura o la severidad de los casos. Imputación de NaNs realizada.
+* **Features Excluidas (Leakage):**
+    * `Days_From_Now`: **Razón:** Usaba `pd.Timestamp.now()`, introduciendo conocimiento del futuro en datos históricos.
+    * `Is_Anomaly`: **Razón:** Calculada usando media/std de *toda* la serie histórica del grupo, violando la dependencia temporal.
+* **Features Omitidas (Datos/Mapeo):**
+    * `Is_Work_Related`: **Razón:** No se encontraron keywords relevantes en `Service_Type` agregado. **Requiere crearse en preproc desde `Nombre_Tipo_Atencion_Arp`**.
+    * Features de Capacidad (`max_cantidad`, etc.): **Razón:** Imposible unir por IDs de municipio incompatibles. **Requiere mapeo `Geogra_Municipio_Id` <-> `Municipality_encoded`**.
 
-```python
-# Aplicar Log1p
-y_train_transformed = np.log1p(y_train_original)
-y_valid_transformed = np.log1p(y_valid_original)
+## 5. Transformación del Target (Log1p)
 
-# Invertir transformación para evaluación
-preds_original = np.expm1(preds_transformed)
-preds_original = np.maximum(0, preds_original)
-```
+* **Problema:** Los datos de conteo/demanda a menudo tienen una distribución asimétrica (skewed), con muchos valores bajos y algunos muy altos, lo que puede afectar negativamente a modelos sensibles a errores grandes (como los que usan RMSE).
+* **Solución:** Se aplicó `np.log1p` (logaritmo natural de 1 + x) al target `Service_Count`.
+* **Rationale:** Esta transformación comprime el rango de la variable objetivo, reduce la asimetría y estabiliza la varianza, ayudando a los modelos a aprender patrones de forma más robusta y a cumplir mejor los supuestos de algunos algoritmos (aunque los modelos de árbol son menos sensibles a esto).
+* **Implementación:** Se entrenó sobre `log1p(y)`, y las predicciones se invirtieron con `np.expm1` antes de evaluar métricas y presentar resultados.
 
-# 5. Selección y Entrenamiento de Modelos
+## 6. Selección y Entrenamiento de Modelos
 
-Se probaron los siguientes modelos:
+* **Modelos Base:** Se eligieron **LightGBM**, **XGBoost** (Gradient Boosting) y **Random Forest** (Bagging).
+    * **Rationale:** Son algoritmos potentes y ampliamente usados para datos tabulares, manejan bien distintos tipos de features (numéricas, categóricas), capturan interacciones y no linealidades, y tienen mecanismos contra el overfitting.
+* **Ensamble:** Se promediaron las predicciones de los modelos base entrenados.
+    * **Rationale:** Los ensambles suelen ser más robustos y generalizar mejor que los modelos individuales, reduciendo la varianza de la predicción.
+* **Entrenamiento:** Sobre `train_df` (datos hasta 2023).
+* **Validación:** Evaluación sobre `valid_df` (datos de 2024) para simular rendimiento en datos futuros no vistos.
+* **Control Overfitting:**
+    * **Regularización:** Uso de parámetros como `lambda_l1`, `lambda_l2`, `gamma`, `min_child_samples`, `max_depth`, `feature_fraction`, `bagging_fraction`.
+    * **Early Stopping:** Detener entrenamiento de LGBM/XGB si la métrica en validación no mejora.
+    * **Tuning (RF):** `RandomizedSearchCV` con `TimeSeriesSplit` para explorar hiperparámetros de RF. Se limitó `max_depth` a 25 como precaución adicional.
 
-## Modelos Implementados
-1. **LightGBM**: Implementación eficiente de Gradient Boosting
-2. **XGBoost**: Otra implementación popular de Gradient Boosting
-3. **Random Forest**: Modelo de ensamblado basado en árboles
-4. **Ensamble Simple**: Promedio aritmético de las predicciones
+## 7. Evaluación del Modelo
 
-## Entrenamiento
-* División temporal: datos hasta finales de 2023 para entrenamiento, datos de 2024 para validación
-* Técnicas contra overfitting:
-   * Regularización (L1/L2)
-   * Limitación de complejidad de árboles
-   * Early stopping
+* **Métricas:** MAE (error interpretable), RMSE (penaliza errores grandes), R² (varianza explicada).
+* **Resultados Validación (v13 - Escala Original, Sin Capacidad, Sin Leaky):**
 
-# 6. Evaluación del Modelo
+| Modelo       | MAE    | RMSE   | R2     |
+| :----------- | :----- | :----- | :----- |
+| LightGBM     | 0.6183 | 5.1097 | 0.9933 |
+| XGBoost      | 0.9077 | 6.8716 | 0.9879 |
+| RandomForest | 0.6650 | 4.9433 | 0.9938 |
+| **Ensamble** | **0.6179** | **4.8295** | **0.9940** |
 
-## Métricas en Validación (Escala Original)
+* **Mejor Modelo:** **Ensamble** (ligeramente superior en MAE). LGBM muy competitivo.
+* **Discusión R² Alto:** Probablemente debido a alta predictibilidad de series agregadas y autocorrelación, más que a overfitting severo tras las correcciones. El posible leakage leve en rolling stats preprocesados podría contribuir. **El MAE bajo (< 1 servicio) es un indicador práctico positivo.**
+* **Test vs Naive:** Wilcoxon test (p <<< 0.05) confirma que el Ensamble **aporta valor significativo** sobre una predicción simple.
 
-| Modelo | MAE | RMSE | R² |
-|--------|-----|------|-----|
-| LightGBM | 0.618 | 5.110 | 0.9354 |
-| XGBoost | 0.908 | 6.872 | 0.8942 |
-| RandomForest | 0.665 | 4.943 | 0.8893 |
-| Ensamble | 0.618 | 4.830 | 0.9540 |
+## 8. Análisis de Resultados y Gráficas
 
-## Hallazgos Clave
-* R² muy altos (~0.90)
-* Ensamble fue el mejor modelo según MAE
-* Test de Wilcoxon confirmó superioridad sobre modelo naive (p < 0.001)
+* **Diagnóstico Visual:** Se generaron múltiples gráficas para entender el rendimiento:
+    * **Scatter Real vs Pred:** Buena alineación general.
+    * **TS Agregada:** Seguimiento cercano de la tendencia real en validación.
+    * **TS Ejemplo (Med-Amb):** Captura forma general pero suaviza picos (esperado). MAE específico calculado.
+    * **Intervalos Quantile:** Dan una idea de la incertidumbre de la predicción agregada.
+    * **Historial GrowthRate MoM:** Muestra tendencia negativa reciente que influye en predicción futura.
+    * **Residuos Agregados:** **Fundamental revisarla:** buscar patrones (tendencia, estacionalidad) que indiquen sesgos del modelo. Idealmente, deben ser ruido blanco alrededor de cero.
+    * **Mejores/Peores Series:** Ayudan a identificar dónde el modelo funciona excepcionalmente bien o mal.
+    * **Importancia Features:** Lags y Rolling Means consistentemente importantes (XGB/RF). LGBM valora más Municipio y GrowthRate MoM. Incapacidad tiene alguna relevancia.
+* **Tendencia Futura:** La predicción descendente para 2025 es una **extrapolación de la tendencia negativa reciente** observada en los datos (ver plot GrowthRate MoM). **Requiere validación experta.**
 
-# 7. Análisis de Resultados y Gráficas
+## 9. Predicción Futura e Implementación
 
-Se generaron gráficas para analizar:
-* Reales vs. Predichos
-* Serie temporal agregada
-* Ejemplo de serie específica (Medellín - Ambulatoria)
-* Intervalos de confianza (90%)
-* Tasa de crecimiento MoM
-* Residuos
-* Importancia de features
+* **Método Iterativo:** Esencial para generar predicciones cuando hay features que dependen de lags recientes (como lag 1, rolling mean 3/6, growth rates). Se predice mes t+1, se usa para calcular features de t+2, etc.
+* **Implementación:**
+    * Se usó un bucle `for` sobre los 12 meses futuros.
+    * La función `generate_future_features` recalculó todas las features para cada mes futuro, usando el historial `all_predictions_df` (que se actualiza con cada nueva predicción).
+    * Se corrigió el método de obtención de lags usando `.map()` sobre un MultiIndex para evitar errores de `pd.merge`.
+* **Salidas:**
+    * Modelos `.joblib`.
+    * Decoders `.joblib`.
+    * CSV detallado futuro.
+    * JSON con métricas y resúmenes.
 
-# 8. Predicción Futura e Implementación
+## 10. Limitaciones y Próximos Pasos Cruciales
 
-## Método Iterativo
-* Para cada mes futuro se generaron features usando:
-   * Valores históricos
-   * Predicciones anteriores
-   * Cálculo de lags y rolling stats
+1.  **Identificación Servicios Laborales:** **Bloqueante Principal.** Es **imperativo** modificar el **preprocesamiento inicial** para crear la feature `Is_Work_Related` desde `muestra_salud_.csv` (analizando `Nombre_Tipo_Atencion_Arp` u otra columna fiable) y agregarla correctamente. El script actual está listo para usarla una vez exista.
+2.  **Incorporación Datos Capacidad:** **Bloqueado** por falta de mapeo entre `Geogra_Municipio_Id` y `Municipality_encoded`. Se necesita conseguir/crear esta tabla de equivalencias para poder unir `max_cantidad` y evaluar su impacto.
+3.  **Revisar Cálculo Rolling Stats (Preproc):** Corregir en el preprocesamiento inicial para usar solo datos pasados (`closed='left'` o `.shift(1)`) y eliminar el leakage leve. Re-evaluar modelos con datos corregidos (R² podría bajar ligeramente).
+4.  **Validar Tendencia Futura:** Comparar la predicción descendente con expectativas del negocio y datos reales más recientes. Si es necesario, ajustar el modelo (ej. quitar GrowthRate features si sobre-extrapolan).
+5.  **Optimización Adicional (Secundario):**
+    * Tuning más exhaustivo (LGBM/XGB).
+    * Explorar nuevas features (económicas, calendario detallado).
+    * Considerar modelos alternativos si la precisión actual no es suficiente para los casos de uso.
 
-## Archivos Generados
-1. `healthcare_demand_forecast_detailed_12_months.csv`
-2. `model_analysis_results.json` (contiene métricas y resúmenes)
-
-## Modelos Guardados
-* Formatos: `.joblib` (LightGBM, XGBoost, RandomForest)
-
-# 10. Estructura del Repositorio
-
-```
-.
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── results/
-├── models/
-└── notebooks/
-```
+**Conclusión Final (Estado Actual):** Se ha desarrollado un pipeline robusto que produce predicciones mensuales agregadas con alta precisión estadística en los datos de validación, superando un baseline simple. Se han identificado y mitigado problemas de data leakage. Sin embargo, el cumplimiento completo de los requisitos (detalle laboral) y la incorporación de información contextual clave (capacidad de red) dependen críticamente de **mejoras en el preprocesamiento y la disponibilidad de datos/mapeos adicionales.**
