@@ -1,24 +1,26 @@
 Para poder ver la pagina con todos los resultados encontrados entrar aquí: https://salud-sura-insights-dashboard.lovable.app/
 
-# Modelo de Predicción de Demanda de Servicios de Salud
+# 📈 Healthcare Service Demand Forecasting
 
-## 1. Objetivo del Proyecto
-El objetivo principal de este proyecto es desarrollar modelos de Machine Learning para predecir la demanda futura de servicios de salud para los próximos 12 meses. Las predicciones deben ser detalladas por:
-- Tipo de servicio médico
-- Municipio y tipo de servicio médico
+## 1. Características
+- Predicción multinivel (municipio + tipo de servicio)
+- Ensamble de 3 modelos (LGBM, XGBoost, Random Forest)
+- 50+ features temporales y contextuales
+- Sistema de monitoreo de errores integrado
+- Visualizaciones interactivas
 
-Se requiere específicamente incluir (aunque no fue posible en la iteración final por falta de datos) las atenciones relacionadas con accidentes y enfermedades laborales. Los modelos deben incorporar factores como estacionalidad, tendencias históricas, características demográficas (implícitas en Municipio) e indicadores económicos locales.
+Se requiere específicamente incluir las atenciones relacionadas con accidentes y enfermedades laborales. Los modelos deben incorporar factores como estacionalidad, tendencias históricas, características demográficas (implícitas en Municipio) e indicadores económicos locales.
 
 ## 2. Datos Utilizados
 Se utilizaron principalmente los siguientes conjuntos de datos:
 
-1. **`muestra_salud_.csv`**: Dataset original con aproximadamente 11 millones de registros detallados de atenciones médicas. Contiene información granular sobre fechas, pacientes, IPS, médicos, diagnósticos, tipos de atención, etc.
+1. **`muestra_salud_.csv`**: Dataset reducido del dataset orignal con aproximadamente 11 millones de registros detallados de atenciones médicas. Contiene información granular sobre fechas, pacientes, IPS, médicos, diagnósticos, tipos de atención, etc.
 
 2. **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datos preprocesados y agregados mensualmente a nivel de `Municipio` y `Service_Type` (derivado de `Nombre_Tipo_Atencion_Arp`). Estos fueron los datasets principales para entrenar y validar los modelos de forecasting mensual.
 
-3. **`2.Red Prestadores.xlsx - Sheet1.csv`**: Contiene información sobre los prestadores de servicios (IPS), incluyendo un ID de municipio (`Geogra_Municipio_Id`) y una métrica de capacidad (`max_cantidad`). 
+3. **`2.Red Prestadores.xlsx`**: Contiene información sobre los prestadores de servicios (IPS), incluyendo un ID de municipio (`Geogra_Municipio_Id`) y una métrica de capacidad (`max_cantidad`). 
 
-**Nota importante**: La agregación de 11M de registros a ~14k filas mensuales implica una pérdida significativa de granularidad diaria/semanal. Los modelos resultantes predicen la demanda agregada mensual.
+**Nota importante**: La agregación de 11M de registros a ~500k filas mensuales implica una pérdida significativa de granularidad diaria/semanal. Los modelos resultantes predicen la demanda agregada mensual.
 
 ## 3. Preprocesamiento e Ingeniería de Características
 El preprocesamiento incluyó los siguientes pasos clave:
@@ -68,6 +70,7 @@ y_valid_transformed = np.log1p(y_valid_original)
 preds_original = np.expm1(preds_transformed)
 preds_original = np.maximum(0, preds_original)
 ```
+
 # 5. Selección y Entrenamiento de Modelos
 
 Se probaron los siguientes modelos:
