@@ -130,19 +130,6 @@ Se generaron gráficas para analizar:
 ## Modelos Guardados
 * Formatos: `.joblib` (LightGBM, XGBoost, RandomForest)
 
-# 9. Limitaciones y Próximos Pasos
-
-## Limitaciones Críticas
-1. Falta de feature `Is_Work_Related`
-2. Incompatibilidad de IDs municipales para datos de capacidad
-3. Leakage leve en rolling stats
-
-## Acciones Recomendadas
-1. Modificar preprocesamiento para incluir `Is_Work_Related`
-2. Crear tabla de mapeo de IDs municipales
-3. Corregir cálculo de rolling stats con `closed='left'`
-4. Realizar tuning más exhaustivo de hiperparámetros
-
 # 10. Estructura del Repositorio
 
 ```
