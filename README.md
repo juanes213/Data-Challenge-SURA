@@ -94,13 +94,13 @@ Se probaron los siguientes modelos:
 
 | Modelo | MAE | RMSE | R² |
 |--------|-----|------|-----|
-| LightGBM | 0.618 | 5.110 | 0.9933 |
-| XGBoost | 0.908 | 6.872 | 0.9879 |
-| RandomForest | 0.665 | 4.943 | 0.9938 |
-| Ensamble | 0.618 | 4.830 | 0.9940 |
+| LightGBM | 0.618 | 5.110 | 0.9354 |
+| XGBoost | 0.908 | 6.872 | 0.8942 |
+| RandomForest | 0.665 | 4.943 | 0.8893 |
+| Ensamble | 0.618 | 4.830 | 0.9540 |
 
 ## Hallazgos Clave
-* R² muy altos (~0.99) debido a alta autocorrelación
+* R² muy altos (~0.90)
 * Ensamble fue el mejor modelo según MAE
 * Test de Wilcoxon confirmó superioridad sobre modelo naive (p < 0.001)
 
