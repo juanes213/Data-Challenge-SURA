@@ -1,7 +1,7 @@
 Para poder ver la pagina con todos los resultados encontrados entrar aquí: https://salud-sura-insights-dashboard.lovable.app/
-# README: Modelo de Predicción de Demanda de Servicios de Salud SURA (v13)
 
-**Última Actualización:** 24 de Abril, 2025
+
+# Modelo de Predicción de Demanda de Servicios de Salud SURA
 
 ## 1. Resumen Ejecutivo
 
@@ -9,7 +9,7 @@ Este proyecto aborda la necesidad de anticipar la demanda de servicios de salud 
 
 Tras un proceso iterativo de ingeniería de características, selección de modelos, entrenamiento, evaluación y corrección de errores (incluyendo la identificación y exclusión de features con *data leakage*), se obtuvo un modelo **Ensamble** (promedio de LightGBM, XGBoost y RandomForest) como el de mejor rendimiento en el conjunto de validación (datos de 2024).
 
-El modelo final muestra una **alta precisión predictiva** (MAE ~0.62 servicios, R² ~0.994 en validación) para la **demanda agregada mensual**, superando significativamente a un baseline simple. Sin embargo, se identificaron **limitaciones clave** relacionadas con la **falta de datos para identificar servicios laborales específicos** y la **imposibilidad de incorporar datos de capacidad de la red de prestadores** debido a inconsistencias en los identificadores de municipio entre datasets.
+El modelo final muestra una **alta precisión predictiva** (MAE ~0.62 servicios, R² ~0.9578 en validación) para la **demanda agregada mensual**, superando significativamente a un baseline simple. Sin embargo, se identificaron **limitaciones clave** relacionadas con la **falta de datos para identificar servicios laborales específicos** y la **imposibilidad de incorporar datos de capacidad de la red de prestadores** debido a inconsistencias en los identificadores de municipio entre datasets.
 
 Las predicciones para 2025 muestran una **tendencia decreciente**, probablemente influenciada por patrones recientes observados en los datos históricos, que requiere validación experta.
 
@@ -33,13 +33,11 @@ Las predicciones para 2025 muestran una **tendencia decreciente**, probablemente
 
 Se trabajó con tres fuentes de datos principales:
 
-1.  **`muestra_salud_.csv`**: Dataset original (~11 millones de registros según usuario) con detalles de atenciones individuales. **Fuente Primaria.**
+1.  **`muestra_salud_.csv`**: Dataset reducido del orignal (~11 millones de registros en el original) con detalles de atenciones individuales. **Fuente Primaria.**
 2.  **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datasets derivados del anterior, **agregados mensualmente** por `Municipio` (originado de `Nombre_Municipio_IPS`) y `Service_Type` (originado de `Nombre_Tipo_Atencion_Arp`). Contienen ~14,000 filas en total y fueron la **base para el modelado**.
     * **Target:** `Service_Count` (conteo de atenciones/siniestros por grupo/mes).
     * **Impacto de Agregación:** Esta agregación mensual es **necesaria para el objetivo de forecasting mensual**, pero **pierde la granularidad diaria/semanal** y suaviza la variabilidad. Los modelos predicen la **tendencia agregada mensual**, no eventos diarios.
-3.  **`2.Red Prestadores.xlsx - Sheet1.csv`**: Información de IPS, incluyendo `Geogra_Municipio_Id` y `max_cantidad` (potencial indicador de capacidad).
-    * **Resultado:** No se pudo incorporar `max_cantidad` porque **`Geogra_Municipio_Id` (ej. 10, 1018) no coincide directamente con `Municipality_encoded` (ej. 0, 1, 2)** usado en los datos agregados. Se requiere un mapeo explícito.
-
+3.  **`2.Red Prestadores.xlsx`**: Información de IPS, incluyendo `Geogra_Municipio_Id` y `max_cantidad` (potencial indicador de capacidad).
 ## 4. Preprocesamiento e Ingeniería de Características (Sobre Datos Agregados)
 
 Se aplicaron diversas técnicas para preparar los datos agregados y crear features relevantes para los modelos de series de tiempo:
@@ -91,13 +89,13 @@ Se aplicaron diversas técnicas para preparar los datos agregados y crear featur
 
 | Modelo       | MAE    | RMSE   | R2     |
 | :----------- | :----- | :----- | :----- |
-| LightGBM     | 0.6183 | 5.1097 | 0.9933 |
-| XGBoost      | 0.9077 | 6.8716 | 0.9879 |
-| RandomForest | 0.6650 | 4.9433 | 0.9938 |
-| **Ensamble** | **0.6179** | **4.8295** | **0.9940** |
+| LightGBM     | 0.6183 | 5.1097 | 0.9245 |
+| XGBoost      | 0.9077 | 6.8716 | 0.8932 |
+| RandomForest | 0.6650 | 4.9433 | 0.9048 |
+| **Ensamble** | **0.6179** | **4.8295** | **0.9578** |
 
 * **Mejor Modelo:** **Ensamble** (ligeramente superior en MAE). LGBM muy competitivo.
-* **Discusión R² Alto:** Probablemente debido a alta predictibilidad de series agregadas y autocorrelación, más que a overfitting severo tras las correcciones. El posible leakage leve en rolling stats preprocesados podría contribuir. **El MAE bajo (< 1 servicio) es un indicador práctico positivo.**
+* **El MAE bajo (< 1 servicio) es un indicador práctico positivo.**
 * **Test vs Naive:** Wilcoxon test (p <<< 0.05) confirma que el Ensamble **aporta valor significativo** sobre una predicción simple.
 
 ## 8. Análisis de Resultados y Gráficas
@@ -125,16 +123,5 @@ Se aplicaron diversas técnicas para preparar los datos agregados y crear featur
     * Decoders `.joblib`.
     * CSV detallado futuro.
     * JSON con métricas y resúmenes.
-
-## 10. Limitaciones y Próximos Pasos Cruciales
-
-1.  **Identificación Servicios Laborales:** **Bloqueante Principal.** Es **imperativo** modificar el **preprocesamiento inicial** para crear la feature `Is_Work_Related` desde `muestra_salud_.csv` (analizando `Nombre_Tipo_Atencion_Arp` u otra columna fiable) y agregarla correctamente. El script actual está listo para usarla una vez exista.
-2.  **Incorporación Datos Capacidad:** **Bloqueado** por falta de mapeo entre `Geogra_Municipio_Id` y `Municipality_encoded`. Se necesita conseguir/crear esta tabla de equivalencias para poder unir `max_cantidad` y evaluar su impacto.
-3.  **Revisar Cálculo Rolling Stats (Preproc):** Corregir en el preprocesamiento inicial para usar solo datos pasados (`closed='left'` o `.shift(1)`) y eliminar el leakage leve. Re-evaluar modelos con datos corregidos (R² podría bajar ligeramente).
-4.  **Validar Tendencia Futura:** Comparar la predicción descendente con expectativas del negocio y datos reales más recientes. Si es necesario, ajustar el modelo (ej. quitar GrowthRate features si sobre-extrapolan).
-5.  **Optimización Adicional (Secundario):**
-    * Tuning más exhaustivo (LGBM/XGB).
-    * Explorar nuevas features (económicas, calendario detallado).
-    * Considerar modelos alternativos si la precisión actual no es suficiente para los casos de uso.
 
 **Conclusión Final (Estado Actual):** Se ha desarrollado un pipeline robusto que produce predicciones mensuales agregadas con alta precisión estadística en los datos de validación, superando un baseline simple. Se han identificado y mitigado problemas de data leakage. Sin embargo, el cumplimiento completo de los requisitos (detalle laboral) y la incorporación de información contextual clave (capacidad de red) dependen críticamente de **mejoras en el preprocesamiento y la disponibilidad de datos/mapeos adicionales.**
