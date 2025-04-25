@@ -1,4 +1,6 @@
-# README: Modelo de Predicción de Demanda de Servicios de Salud
+#  Modelo de Predicción de Demanda de Servicios de Salud
+
+Para poder ver la pagina con todos los resultados encontrados entrar aquí: https://salud-sura-insights-dashboard.lovable.app/
 
 ## 1. Objetivo del Proyecto
 
