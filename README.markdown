@@ -22,9 +22,6 @@ Este proyecto desarrolla un pipeline de Machine Learning para predecir la demand
     - [Ejecución Principal](#3-ejecución-principal)
 13. [Fundamentos Matemáticos](#fundamentos-matemáticos)
 14. [Por Qué Se Toman Ciertos Pasos](#por-qué-se-toman-ciertos-pasos)
-15. [Dependencias](#dependencias)
-16. [Cómo Ejecutar](#cómo-ejecutar)
-
 ---
 
 ## Resumen Ejecutivo
@@ -224,32 +221,33 @@ Se generaron gráficas para cada modelo individual (LGBM, XGBoost, RF).
 
 ## Implementación Matemática
 ### Modelo de Predicción
-\[
-\hat{y}(t) = \beta_0 + \sum (\beta_i \cdot x_i(t)) + \gamma \cdot s(t) + \epsilon(t)
-\]
-- \(\hat{y}(t)\): Predicción en tiempo \(t\).
-- \(\beta_0\): Intercepción.
-- \(x_i(t)\): *Features* temporales (lags, medias móviles).
-- \(s(t)\): Componente estacional (seno/coseno).
-- \(\epsilon(t)\): Error.
 
+$$
+\hat{y}(t) = \beta_0 + \sum (\beta_i \cdot x_i(t)) + \gamma \cdot s(t) + \epsilon(t)
+$$
+
+Donde:
+
+- $\hat{y}(t)$: Predicción en el tiempo $t$.
+- $\beta_0$: Término de intercepto.
+- $x_i(t)$: Variables explicativas temporales (por ejemplo, rezagos o medias móviles).
+- $s(t)$: Componente estacional (representada mediante funciones seno/coseno).
+- $\epsilon(t)$: Término de error (ruido no explicado por el modelo).
 ### Transformación Logarítmica
 ```python
 y_transformed = np.log1p(y_original)
 y_pred_original = np.expm1(y_pred_transformed)
 ```
-- **Razón**: \(\log(1 + x)\) estabiliza varianza, \(\exp(x) - 1\) es su inversa exacta.
+- **Razón**: $(\log(1 + x)\)$ estabiliza varianza, $(\exp(x) - 1\)$ es su inversa exacta.
 
 ### Descomposición Temporal
 ```python
 df['month_sin'] = np.sin(2 * np.pi * df['month']/12)
 df['month_cos'] = np.cos(2 * np.pi * df['month']/12)
 ```
-- **Teoría**: Representa funciones periódicas como:
-\[
-f(t) = a_0 + \sum [a_n \cdot \cos(n\omega t) + b_n \cdot \sin(n\omega t)]
-\]
-donde \(\omega = 2\pi/T\).
+- **Teoría**: Representa funciones periódicas como:  
+  $f(t) = a_0 + \sum [a_n \cdot \cos(n\omega t) + b_n \cdot \sin(n\omega t)]$,  
+  donde $\omega = \frac{2\pi}{T}$.
 
 ### Arquitectura del Modelo
 ```mermaid
@@ -271,7 +269,7 @@ graph TD
 ---
 
 ## Predicción Futura e Implementación
-- **Método Iterativo**: Predice mes \(t+1\), usa resultado para calcular *features* de \(t+2\), etc.
+- **Método Iterativo**: Predice mes \(t+1\), usa resultado para calcular *features* de $(t+2\)$, etc.
 - **Implementación**:
   - Bucle `for` sobre 12 meses futuros.
   - `generate_future_features` recalcula *features* usando historial actualizado (`all_predictions_df`).
@@ -349,10 +347,8 @@ GEOJSON_URL = "..."
 
 #### Razonamiento Matemático
 - **Transformación Logarítmica**:
-  \[
-  y_{\text{transformado}} = \log(1 + y)
-  \]
-  Comprime valores grandes, inversa: \(\exp(y) - 1\).
+  $y_{\text{transformado}} = \log(1 + y)$
+  Comprime valores grandes, inversa: $(\exp(y) - 1\)$.
 - **Encoding Categórico**: Convierte categorías a enteros, eficiente para modelos de árboles.
 
 ---
@@ -450,25 +446,19 @@ def select_and_prepare_features(df, target_col, date_col, id_cols_remove, leaky_
 - Excluye *leakage* para predicciones realistas.
 
 **Razonamiento Matemático**:
-- **Lags**:
-  \[
-  \text{Service_Count_lag_k}(t) = \text{Service_Count}(t - k)
-  \]
-- **Rolling**:
-  \[
-  \text{rolling_mean}_w(t) = \frac{1}{w} \sum_{i=1}^w \text{Service_Count}(t - i)
-  \]
-  \[
-  \text{rolling_std}_w(t) = \sqrt{\frac{1}{w} \sum_{i=1}^w (\text{Service_Count}(t - i) - \text{rolling_mean}_w(t))^2}
-  \]
-- **Seno/Coseno**:
-  \[
-  \text{Month_sin} = \sin\left(2\pi \cdot \frac{\text{mes}}{12}\right)
-  \]
-- **Crecimiento**:
-  \[
-  \text{Growth_Rate_MoM} = \frac{\text{Service_Count}(t-1)}{\text{Service_Count}(t-2)} - 1
-  \]
+
+- **Lags**:  
+  `Service_Count_lag_k(t) = Service_Count(t - k)`
+
+- **Rolling**:  
+  `rolling_mean_w(t) = (1/w) * Σ[i=1 to w] Service_Count(t - i)`  
+  `rolling_std_w(t) = sqrt((1/w) * Σ[i=1 to w] (Service_Count(t - i) - rolling_mean_w(t))^2)`
+
+- **Seno/Coseno**:  
+  `Month_sin = sin(2π * mes / 12)`
+
+- **Crecimiento**:  
+  `Growth_Rate_MoM = Service_Count(t-1) / Service_Count(t-2) - 1`
 
 ---
 
@@ -560,12 +550,13 @@ def train_evaluate_model(model_name, model_obj, X_train, y_train, X_valid, y_val
 
 **Razonamiento Matemático**:
 - **Cuantiles**:
-  \[
-  \text{Pérdida}_\alpha(y, \hat{y}) = \begin{cases} 
-  \alpha (y - \hat{y}) & \text{si } y \geq \hat{y} \\
-  (1 - \alpha) (\hat{y} - y) & \text{si } y < \hat{y}
-  \end{cases}
-  \]
+
+Perdida_alpha(y, y_hat) = {  
+  alpha * (y - y_hat)  if y >= y_hat  
+  (1 - alpha) * (y_hat - y)  if y < y_hat
+}
+
+
 
 ---
 
@@ -602,9 +593,8 @@ def train_evaluate_model(model_name, model_obj, X_train, y_train, X_valid, y_val
 
 **Razonamiento Matemático**:
 - **MAE Agrupado**:
-  \[
-  \text{MAE}_{\text{grupo}} = \frac{1}{n_{\text{grupo}}} \sum_{i \in \text{grupo}} |\text{Real}_i - \text{Predicho}_i|
-  \]
+MAE_grupo = (1 / n_grupo) * Σ[i ∈ grupo] |Real_i - Predicho_i|
+
 
 ---
 
@@ -627,9 +617,9 @@ La función `main` orquesta:
    - Lags, rolling: Dependencias temporales.
    - Seno/Coseno: Estacionalidad continua.
 2. **Transformación Logarítmica**:
-   \[
+   $$
    y = \log(1 + \text{Service_Count})
-   \]
+   $$
 3. **Modelos**:
    - LightGBM/XGBoost: Minimizan pérdida.
    - RandomForest: Reduce varianza.
@@ -637,9 +627,9 @@ La función `main` orquesta:
 4. **Métricas**:
    - MAE, RMSE, R².
 5. **Wilcoxon**:
-   \[
+   $$
    W = \sum_{i: d_i \neq 0} \text{rango}(|d_i|) \cdot \text{signo}(d_i)
-   \]
+   $$
 6. **Cuantiles**: Intervalos de incertidumbre.
 
 ---
@@ -656,29 +646,5 @@ La función `main` orquesta:
 
 ---
 
-## Dependencias
-- Python 3.8+
-- Bibliotecas: `pandas`, `numpy`, `matplotlib`, `seaborn`, `lightgbm`, `xgboost`, `scikit-learn`, `scipy`, `joblib`, `geopandas`, `unidecode`
-
-```bash
-pip install pandas numpy matplotlib seaborn lightgbm xgboost scikit-learn scipy joblib geopandas unidecode
-```
-
----
-
-## Cómo Ejecutar
-1. Instala dependencias.
-2. Coloca `healthcare_train_data.csv`, `healthcare_valid_data.csv` en el directorio.
-3. Ejecuta:
-   ```bash
-   python script.py
-   ```
-4. Revisa salidas:
-   - CSV: `healthcare_demand_forecast_detailed_12_months.csv`
-   - JSON: `model_analysis_results_v14.json`
-   - Gráficos mostrados.
-   - Dashboard: [Salud SURA Insights Dashboard](https://salud-sura-insights-dashboard.onrender.com).
-
----
 
 **Conclusión**: El pipeline produce predicciones mensuales precisas, superando un *baseline* simple. Sin embargo, la identificación de servicios laborales y la incorporación de datos de capacidad requieren mejoras en el preprocesamiento y mapeos de datos.
