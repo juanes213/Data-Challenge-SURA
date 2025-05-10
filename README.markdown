@@ -71,25 +71,44 @@ Se trabajó con tres fuentes de datos principales:
 ---
 
 ## Preprocesamiento e Ingeniería de Características
-Se aplicaron técnicas para preparar los datos agregados y crear *features* relevantes para los modelos de series temporales:
-- **Target**: `Service_Count` (número de servicios por Municipio/TipoServicio/Mes).
-- **Features Temporales**:
-  - `Date`: Primer día del mes (convertido a *datetime*).
-  - `Year`, `Month`, `Quarter`, `Month_of_Year`: Extraídos de `Date`.
-  - `Year_Fraction`: Captura tendencia anual fraccionada.
-  - **Ciclos (Seno/Coseno)**: `Month_sin/cos`, `Quarter_sin/cos`. **Razón**: Modelan la estacionalidad mensual y trimestral de forma continua, adecuada para modelos basados en árboles.
-- **Encoding Categórico**: `Municipality_encoded`, `Service_Type_encoded`. **Razón**: Convierte identificadores de texto a números usando `LabelEncoder`. Se crearon diccionarios (`decoders.joblib`) para mapear nombres originales.
-- **Features de Retrasos (Lags)**: `Service_Count_lag_X` (X=1, 2, 3, 6, 12). **Razón**: La demanda pasada es un predictor fuerte (autocorrelación). NaNs iniciales rellenados con 0.
-- **Features de Estadísticas Móviles**: `Service_Count_rolling_mean/std_X` (X=6, 12). **Razón**: Capturan tendencia local (media móvil) y volatilidad reciente (desviación estándar móvil). **Corrección sugerida**: Usar `.shift(1).rolling(...)` para evitar *leakage*.
-- **Features de Crecimiento**: `Growth_Rate_MoM`, `Growth_Rate_YoY`. **Razón**: Capturan cambios relativos mes a mes y año a año, detectando aceleraciones/desaceleraciones.
-- **Features de Historial**: `Days_Since_First_Service`, `Month_Sequence`. **Razón**: Capturan la "edad" o madurez de cada serie (Municipio-Servicio).
-- **Features de Incapacidad**: `Mean/Median/Total_Incapacity_Days`. **Razón**: Correlacionadas con la demanda futura o severidad. NaNs imputados.
-- **Features Excluidas (Leakage)**:
-  - `Days_From_Now`: Usaba `pd.Timestamp.now()`, introduciendo información futura.
-  - `Is_Anomaly`: Calculada con media/std de toda la serie, violando la dependencia temporal.
-- **Features omitidas**:
-  - `Is_Work_Related`: No se encontraron keywords en `Service_Type`. **Requiere preprocesamiento desde `Nombre_Tipo_Atencion_Arp`**.
-  - Features de Capacidad (`max_cantidad`): IDs de municipio incompatibles. **Requiere mapeo `Geogra_Municipio_Id` <-> `Municipality_encoded`**.
+El preprocesamiento (realizado externamente y cargado en los CSVs `healthcare_train_data.csv` y `healthcare_valid_data.csv`) es fundamental. Basado en el código de preprocesamiento proporcionado, se identificaron y utilizaron las siguientes transformaciones y features:
+
+* **Variable Objetivo:** `Service_Count` (conteo de atenciones).
+* **Transformación del Target (`Log1p`):**
+    * **Por qué:** Los datos de conteo suelen tener distribuciones asimétricas (skewness). La transformación $y_{transformado} = \log(1 + y_{original})$ ayuda a:
+        * Estabilizar la varianza.
+        * Reducir el impacto de valores atípicos extremos.
+        * Hacer que la distribución se asemeje más a una normal, lo cual puede beneficiar a algunos algoritmos (aunque los de árbol son robustos a esto).
+    * Las predicciones se revierten con $y_{original} = \exp(y_{transformado}) - 1$ antes de la evaluación.
+
+* **Features Temporales:**
+    * `Date` (primer día del mes), `Year`, `Month`, `Quarter`, `Month_of_Year`, `Year_Fraction`.
+    * **`Month_sin/cos`, `Quarter_sin/cos`**: **Por qué:** Convierten variables cíclicas (mes, trimestre) en dos dimensiones continuas, permitiendo a los modelos capturar la proximidad entre finales y principios de ciclo (ej. Diciembre y Enero).
+        * Mes: $X_{sin} = \sin(2\pi \cdot \text{mes} / 12)$, $X_{cos} = \cos(2\pi \cdot \text{mes} / 12)$
+
+* **Encoding Categórico:** `Municipality_encoded`, `Service_Type_encoded`.
+    * **Por qué:** Los modelos de ML requieren entradas numéricas. `LabelEncoder` asigna un entero único a cada categoría. Se guardaron `decoders.joblib` para revertir a nombres originales.
+
+* **Features de Lags (`Service_Count_lag_X`):** (X=1, 2, 3, 6, 12 meses).
+    * **Por qué:** La demanda de servicios de salud a menudo muestra una fuerte **autocorrelación**: la demanda en un período está influenciada por la demanda en períodos recientes. Los lags $Y_{t-k}$ son cruciales para capturar esta dependencia temporal. Se incluyeron lags de corto plazo (1-3 meses), mediano plazo (6 meses) y estacionales (12 meses).
+
+* **Features Rolling Statistics (`Service_Count_rolling_mean/std_X`):** (X=6, 12 meses).
+    * **Por qué:** Las medias móviles suavizan las fluctuaciones a corto plazo y revelan tendencias locales. Las desviaciones estándar móviles capturan la volatilidad reciente.
+    * **Advertencia Preprocesamiento Original:** Si el cálculo no usó `.shift(1)` o `closed='left'`, hay un **leakage leve** (se usa el valor del mes actual en su propio cálculo de rolling stat), lo que puede inflar métricas. Se recomendó corregirlo.
+
+* **Features de Crecimiento (`Growth_Rate_MoM`, `Growth_Rate_YoY`):**
+    * **Por qué:** Capturan la tasa de cambio relativa, indicando aceleración o desaceleración en la demanda. $G_{MoM} = (Y_t / Y_{t-1}) - 1$.
+
+* **Features de Historial:** `Days_Since_First_Service`, `Month_Sequence`.
+    * **Por qué:** Reflejan la "antigüedad" o "madurez" de una serie temporal específica (Municipio-Servicio), lo que podría influir en su patrón de demanda.
+
+* **Features de Incapacidad:** `Mean/Median/Total_Incapacity_Days`.
+    * **Por qué:** Potencialmente correlacionadas con la severidad o el tipo de servicios demandados.
+
+* **Features Excluidas (Por Data Leakage):**
+    * `Days_From_Now`: **Razón:** Utilizaba la fecha de ejecución del script (`pd.Timestamp.now()`), introduciendo información futura en el conjunto de entrenamiento.
+    * `Is_Anomaly`: **Razón:** Se calculaba usando la media y desviación estándar de *toda* la serie histórica del grupo, incluyendo puntos futuros respecto a una observación dada.
+    * **Impacto de Exclusión:** La eliminación de estas features es **CRUCIAL** para una evaluación realista del modelo. Su presencia llevaba a R² artificialmente perfectos (ej. 0.9998).
 
 ---
 
@@ -101,20 +120,60 @@ Se aplicaron técnicas para preparar los datos agregados y crear *features* rele
 ---
 
 ## Selección y Entrenamiento de Modelos
-- **Modelos Base**: LightGBM, XGBoost (Gradient Boosting), RandomForest (Bagging).
-  - **Razón**: Potentes para datos tabulares, manejan features numéricas/categóricas, capturan interacciones y no linealidades, con mecanismos contra *overfitting*.
-- **Ensamble**: Promedio de predicciones de modelos base.
-  - **Razón**: Reduce varianza y mejora generalización.
-- **Entrenamiento**: Sobre `healthcare_train_data.csv` (hasta 2023).
-- **Validación**: Sobre `healthcare_valid_data.csv` (2024).
-- **Control de Overfitting**:
-  - Regularización: `lambda_l1`, `lambda_l2`, `gamma`, `min_child_samples`, `max_depth`, `feature_fraction`, `bagging_fraction`.
-  - *Early Stopping*: Detiene entrenamiento si la métrica de validación no mejora.
-  - Tuning (RandomForest): `RandomizedSearchCV` con `TimeSeriesSplit`, `max_depth` limitado a 25.
+
+### Enfoque General
+Se abordó el problema como una tarea de **regresión supervisada sobre series de tiempo**. Para cada combinación única de `Municipio` y `Tipo de Servicio`, se busca predecir el `Service_Count` mensual. Aunque se modelan múltiples series, se entrenó un **único modelo global** que utiliza `Municipality_encoded` y `Service_Type_encoded` como features categóricas, permitiendo al modelo aprender patrones específicos por serie y generalizar entre ellas.
+
+### Modelos Seleccionados
+Se optó por modelos basados en **ensambles de árboles de decisión** debido a su robustez y alto rendimiento en datos tabulares:
+
+* **LightGBM (Light Gradient Boosting Machine):**
+    * **Concepto:** Algoritmo de Gradient Boosting que construye árboles de decisión secuencialmente, donde cada nuevo árbol corrige los errores del anterior. Usa un histograma para optimizar la búsqueda de splits y crecimiento por hoja (leaf-wise) para mayor eficiencia y precisión.
+    * **Por qué:** Rápido, eficiente en memoria, buen manejo de features categóricas, robusto a outliers (con función de pérdida L1).
+* **XGBoost (Extreme Gradient Boosting):**
+    * **Concepto:** Otra implementación optimizada de Gradient Boosting, con regularización avanzada (L1, L2, complejidad del árbol) para controlar el overfitting y manejo eficiente de valores faltantes.
+    * **Por qué:** Rendimiento de vanguardia, popular y con muchas opciones de configuración.
+* **Random Forest:**
+    * **Concepto:** Algoritmo de Bagging (Bootstrap Aggregating). Entrena múltiples árboles de decisión profundos sobre subconjuntos aleatorios de los datos (con reemplazo) y features. La predicción final es el promedio de las predicciones de todos los árboles.
+    * **Por qué:** Robusto al overfitting (en comparación con un solo árbol), fácil de usar, captura no linealidades.
+* **Ensamble Simple (Promedio):**
+    * **Concepto:** Se promedian las predicciones de los modelos individuales (LGBM, XGBoost, RF).
+    * **Por qué:** A menudo mejora la generalización y reduce la varianza del error, llevando a predicciones más estables y, a veces, más precisas que cualquier modelo individual.
+
+### División de Datos y Validación
+* **Temporalidad:** Es crucial en series de tiempo. Se usaron datos hasta finales de **2023 para entrenamiento** y los datos de **2024 para validación** (out-of-time validation).
+    * **Rationale:** Simula el escenario real donde se predice el futuro usando solo información pasada. Evita el data leakage de usar datos futuros en el entrenamiento.
+
+### Ajuste Fino de Hiperparámetros (RandomForest)
+* **Método:** Se usó `RandomizedSearchCV` con `TimeSeriesSplit` (validación cruzada que respeta el orden temporal).
+    * **`RandomizedSearchCV`:** Explora un subconjunto aleatorio de combinaciones de hiperparámetros. **Rationale:** Más eficiente que `GridSearchCV` cuando el espacio de búsqueda es grande.
+    * **`TimeSeriesSplit`:** Asegura que los folds de entrenamiento siempre precedan a los folds de prueba.
+* **Parámetros Ajustados (Ejemplo):** `n_estimators`, `max_depth`, `min_samples_split`, `min_samples_leaf`, `max_features`.
+* **Resultado (Ejemplo de corrida v10):**
+    ```
+    {'max_depth': 30, 'max_features': 0.820..., 'min_samples_leaf': 3, 'min_samples_split': 11, 'n_estimators': 108}
+    ```
+    * Se aplicó un límite manual a `max_depth` (ej. 25) como precaución adicional contra el overfitting.
 
 ---
 
 ## Evaluación del Modelo
+
+* **MAE (Mean Absolute Error):** $\frac{1}{n} \sum_{i=1}^{n} |y_i - \hat{y}_i|$
+    * **Por qué:** Error promedio en las unidades originales del target. Fácil de interpretar. Menos sensible a outliers que RMSE. **Métrica principal para selección.**
+* **RMSE (Root Mean Squared Error):** $\sqrt{\frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2}$
+    * **Por qué:** Penaliza más los errores grandes. Útil si los errores grandes son particularmente costosos.
+* **R² (Coeficiente de Determinación):** $1 - \frac{\sum (y_i - \hat{y}_i)^2}{\sum (y_i - \bar{y})^2}$
+    * **Por qué:** Proporción de la varianza en el target que es predecible a partir de las features. Un valor de 1 indica predicción perfecta.
+* **Resultados Finales (v13 - sin capacidad, sin leaky):** El Ensamble fue el mejor (MAE ~0.6179, R² ~0.9940).
+
+### Prueba Estadística (Wilcoxon Signed-Rank Test)
+* **Propósito:** Comparar si las distribuciones de los errores absolutos del mejor modelo y un modelo Naive (lag 1: $\hat{y}_t = y_{t-1}$) son significativamente diferentes.
+* **Hipótesis:**
+    * H0: Mediana de las diferencias de error = 0 (modelo no es mejor que Naive).
+    * H1: Mediana de las diferencias de error < 0 (modelo es mejor que Naive).
+* **Resultado:** p <<< 0.001 consistentemente, indicando **mejora estadísticamente significativa** sobre el baseline.
+
 - **Métricas**: MAE (error interpretable), RMSE (penaliza errores grandes), R² (varianza explicada).
 - **Resultados (Validación, Escala Original)**:
 
@@ -132,17 +191,34 @@ Se aplicaron técnicas para preparar los datos agregados y crear *features* rele
 ---
 
 ## Análisis de Resultados y Visualizaciones
-- **Gráficos Generados**:
-  - **Scatter Real vs. Predicho**: Buena alineación general.
-  - **Serie Temporal Agregada**: Seguimiento cercano de la tendencia real en validación.
-  - **Serie Temporal Ejemplo (Medellín - Ambulatoria)**: Captura forma general, suaviza picos (esperado).
-  - **Intervalos de Cuantiles**: Incertidumbre de predicción agregada (5º y 95º percentiles).
-  - **Tasa de Crecimiento MoM**: Tendencia negativa reciente influye en predicciones futuras.
-  - **Residuos Agregados**: Revisar patrones (tendencia, estacionalidad) para detectar sesgos. Idealmente, ruido blanco.
-  - **Mejores/Peores Series**: Identifican dónde el modelo funciona bien/mal.
-  - **Importancia de Features**: Lags y Rolling Means dominan (XGBoost/RandomForest). LightGBM valora Municipio y GrowthRate MoM. Incapacidad tiene relevancia moderada.
-- **Tendencia Futura**: Predicciones descendentes para 2025, extrapolando tendencia negativa reciente. **Requiere validación experta**.
-- **Dashboard**: Resultados completos en [Salud SURA Insights Dashboard](https://salud-sura-insights-dashboard.onrender.com).
+
+### Rendimiento General en Validación
+* **Scatter Plot (Real vs. Predicción):** Puntos agrupados cerca de la diagonal y=x, mostrando buena correlación general.
+* **Serie de Tiempo Agregada:** La predicción agregada sigue bien la tendencia y estacionalidad de los datos reales agregados en el periodo de validación.
+* **Intervalos de Confianza (Quantiles):** Estimados con LGBM Quantile Regression, proporcionan un rango de predicción para la demanda agregada, útil para entender la incertidumbre.
+
+### Análisis de Errores
+* **Distribución de Errores:** Idealmente centrada en cero y simétrica. El histograma/KDE ayuda a visualizar esto.
+* **Residuos Agregados vs. Tiempo:** Se grafica el error promedio (Real - Predicción) a lo largo del tiempo. **Por qué:** Permite detectar si el modelo tiene sesgos sistemáticos (ej. subestimar consistentemente en ciertos meses) o si los errores aumentan con el horizonte de predicción. Idealmente, los residuos deben ser ruido blanco.
+
+### Rendimiento por Segmento
+* **Ejemplo (Medellin - Ambulatoria):** Se graficó la serie real vs. predicha para esta combinación de alto volumen y volatilidad. El modelo captura la tendencia general pero **suaviza los picos extremos**, un comportamiento común. Se calculó el MAE específico.
+* **Mejores/Peores 5 Series:** Se identificaron y graficaron las 5 series (Municipio-Servicio) con menor y mayor MAE en validación. **Por qué:** Ayuda a entender dónde el modelo es más/menos preciso y a guiar posibles mejoras futuras o la aceptación de diferentes niveles de error por segmento.
+
+### Importancia de Features
+Se generaron gráficas para cada modelo individual (LGBM, XGBoost, RF).
+* **Observaciones Clave:**
+    * **Lags y Rolling Means:** Dominantes en XGBoost y RF (ej. `Service_Count_rolling_mean_6`, `Service_Count_lag_1`). **Rationale:** Confirma la alta dependencia temporal.
+    * **LGBM:** Dio más peso a `Municipality_encoded` y `Growth_Rate_MoM`. **Rationale:** Los algoritmos de boosting pueden capturar interacciones y no linealidades de forma diferente.
+    * `Mean_Incapacity_Days`: Mostró cierta importancia para XGBoost.
+    * `Growth_Rate_MoM/YoY`: Baja importancia en XGB/RF, pero influyente en LGBM y en la tendencia general predicha.
+* **Utilidad:** Entender qué features impulsan las predicciones ayuda a validar el modelo y a guiar la ingeniería de características futura.
+
+### Tendencia Predicha para 2025
+* **Observación:** Las predicciones muestran una **tendencia general a la baja** a lo largo de 2025.
+* **Causa Probable:** Extrapolación de la tendencia negativa observada en el `Growth_Rate_MoM` promedio durante los últimos meses de 2024 (visualizada en su propia gráfica).
+* **Implicación:** Es crucial validar esta tendencia con conocimiento del negocio. Si es una fluctuación y no un cambio estructural, el modelo podría estar siendo pesimista.
+
 
 ---
 
