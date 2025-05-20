@@ -59,8 +59,8 @@ Los resultados completos están disponibles en el [Salud SURA Insights Dashboard
 
 ## Datos Utilizados
 Se trabajó con tres fuentes de datos principales:
-1. **`muestra_salud_.csv`**: Dataset reducido (~11 millones de registros en el original) con detalles de atenciones individuales. **Fuente primaria**.
-2. **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datasets derivados, **agregados mensualmente** por `Municipio` (de `Nombre_Municipio_IPS`) y `Service_Type` (de `Nombre_Tipo_Atencion_Arp`). Contienen ~140,000 filas en total y fueron la **base para el modelado**.
+1. **`muestra_salud_.csv`**: Dataset reducido (~3.5 millones de registros en el original) con detalles de atenciones individuales. **Fuente primaria**.
+2. **`healthcare_train_data.csv` / `healthcare_valid_data.csv`**: Datasets derivados, **agregados mensualmente** por `Municipio` (de `Nombre_Municipio_IPS`) y `Service_Type` (de `Nombre_Tipo_Atencion_Arp`). Contienen ~50000 filas en total y fueron la **base para el modelado**.
    - **Target**: `Service_Count` (conteo de atenciones/siniestros por grupo/mes).
    - **Impacto de la agregación**: La agregación mensual es necesaria para el *forecasting* mensual, pero pierde granularidad diaria/semanal y suaviza la variabilidad. Los modelos predicen la **tendencia agregada mensual**, no eventos diarios.
 3. **`2.Red Prestadores.xlsx`**: Información de IPS, incluyendo `Geogra_Municipio_Id` y `max_cantidad` (indicador potencial de capacidad).
