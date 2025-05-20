@@ -1,3 +1,5 @@
+Presentación Data Challenge 20/05/2025
+
 # Modelo de Predicción de Demanda de Servicios de Salud SURA
 
 Este proyecto desarrolla un pipeline de Machine Learning para predecir la demanda de servicios de salud de SURA Colombia, optimizando la asignación de recursos y la planificación operativa. El modelo pronostica la demanda (`Service_Count`) a 12 meses, desglosada por municipio y tipo de servicio, utilizando datos históricos agregados mensualmente. Los resultados están disponibles en el siguiente dashboard: [Salud SURA Insights Dashboard](https://salud-sura-insights-dashboard.onrender.com).
